@@ -1,5 +1,11 @@
 package adduct;
 
+import lipid.IonizationMode;
+
+import java.util.Map;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+
 public class Adduct {
 
     /**
@@ -54,6 +60,54 @@ public class Adduct {
         return null;
     }
 
+    public static int getCharge(String adduct) {
+        adduct = adduct.trim();
+        // Match at the end: digits followed by a charge sign (+, −, or -)
+        Pattern pattern = Pattern.compile("(\\d*)([+−-])$");
+        Matcher matcher = pattern.matcher(adduct);
+
+        if (matcher.find()) {
+            String chargeStr = matcher.group(1);
+            int charge;
+
+            if (chargeStr.length() > 0) {
+                charge = Integer.parseInt(chargeStr);
+            } else {
+                charge = 1;
+            }
+
+            return charge;
+        }
+
+        return 1;
+    }
+
+
+    public static int getMultimer(String adduct) {
+        adduct = adduct.trim();
+        Pattern pattern = Pattern.compile("^\\[(\\d*)M");
+        Matcher matcher = pattern.matcher(adduct);
+
+        if (matcher.find()) {
+            String multimerString = matcher.group(1);
+            if (multimerString != null && !multimerString.isEmpty()) {
+                return Integer.parseInt(multimerString);
+            }
+        }
+        return 1; // Default to monomer if no number found
+    }
+
+    public static Map<String, Double> getAdductMapByIonizationMode(IonizationMode ionizationMode) {
+        if (ionizationMode == IonizationMode.POSITIVE) {
+            return AdductList.MAPMZPOSITIVEADDUCTS;
+        } else if (ionizationMode == IonizationMode.NEGATIVE) {
+            return AdductList.MAPMZNEGATIVEADDUCTS;
+        } else {
+            throw new IllegalArgumentException("Unknown ionization mode: " + ionizationMode);
+        }
+    }
+
+
     /**
      * Returns the ppm difference between measured mass and theoretical mass
      *
@@ -84,3 +138,4 @@ public class Adduct {
 
 
 }
+
