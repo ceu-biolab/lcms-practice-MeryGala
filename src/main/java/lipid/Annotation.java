@@ -1,9 +1,9 @@
 package lipid;
 
-import java.util.Collections;
-import java.util.Objects;
-import java.util.Set;
-import java.util.TreeSet;
+import adduct.Adduct;
+import adduct.MassTransformation;
+
+import java.util.*;
 
 /**
  * Class to represent the annotation over a lipid
@@ -14,7 +14,7 @@ public class Annotation {
     private final double mz;
     private final double intensity; // intensity of the most abundant peak in the groupedPeaks
     private final double rtMin;
-    private final IoniationMode ionizationMode;
+    private final IonizationMode ionizationMode;
     private String adduct; // !!TODO The adduct will be detected based on the groupedSignals
     private final Set<Peak> groupedSignals;
     private int score;
@@ -28,7 +28,7 @@ public class Annotation {
      * @param retentionTime
      * @param ionizationMode
      */
-    public Annotation(Lipid lipid, double mz, double intensity, double retentionTime, IoniationMode ionizationMode) {
+    public Annotation(Lipid lipid, double mz, double intensity, double retentionTime, IonizationMode ionizationMode) {
         this(lipid, mz, intensity, retentionTime, ionizationMode, Collections.emptySet());
     }
 
@@ -40,16 +40,16 @@ public class Annotation {
      * @param ionizationMode
      * @param groupedSignals
      */
-    public Annotation(Lipid lipid, double mz, double intensity, double retentionTime, IoniationMode ionizationMode, Set<Peak> groupedSignals) {
+    public Annotation(Lipid lipid, double mz, double intensity, double retentionTime, IonizationMode ionizationMode, Set<Peak> groupedSignals) {
         this.lipid = lipid;
         this.mz = mz;
         this.rtMin = retentionTime;
         this.intensity = intensity;
         this.ionizationMode = ionizationMode;
-        // !!TODO This set should be sorted according to help the program to deisotope the signals plus detect the adduct
         this.groupedSignals = new TreeSet<>(groupedSignals);
         this.score = 0;
         this.totalScoresApplied = 0;
+        this.detectAdduct(this.ionizationMode);
     }
 
     public Lipid getLipid() {
@@ -76,7 +76,7 @@ public class Annotation {
         return intensity;
     }
 
-    public IoniationMode getIonizationMode() {
+    public IonizationMode getIonizationMode() {
         return ionizationMode;
     }
 
@@ -128,5 +128,48 @@ public class Annotation {
                 lipid.getName(), mz, rtMin, adduct, intensity, score);
     }
 
-    // !!TODO Detect the adduct with an algorithm or with drools, up to the user.
+    public String detectAdduct(IonizationMode ionizationMode) {
+        final double TOLERANCE_PPM = 10.0;
+
+        Peak closestPeak = null;
+        double closestMzDiff = Double.MAX_VALUE;
+
+        for (Peak p : groupedSignals) {
+            double diffMz = Math.abs(p.getMz() - this.mz);
+            if (diffMz < closestMzDiff) {
+                closestMzDiff = diffMz;
+                closestPeak = p;
+            }
+        }
+
+        Map<String, Double> map = Adduct.getAdductMapByIonizationMode(ionizationMode);
+
+        if (closestPeak != null) {
+            double peakMz = closestPeak.getMz();
+
+            for (Map.Entry<String, Double> entry : map.entrySet()) {
+                String adductName = entry.getKey();
+                double adductMass = entry.getValue();
+
+                int charge = Adduct.getCharge(adductName);
+                int multimer = Adduct.getMultimer(adductName);
+
+                try {
+                    double monoMass = MassTransformation.getMonoisotopicMassFromMZ(peakMz, adductName, ionizationMode);
+                    double expectedMz = MassTransformation.getMzFromMonoisotopicMass(monoMass, adductName, ionizationMode);
+
+                    double ppmError = Math.abs((expectedMz - this.mz) / this.mz) * 1_000_000;
+                    if (ppmError <= TOLERANCE_PPM) {
+                        this.adduct = adductName;
+                        return adductName;
+                    }
+                } catch (IllegalArgumentException e) {
+                    // skip invalid charge/multimer combinations
+                    continue;
+                }
+            }
+        }
+
+        return null;
+    }
 }
